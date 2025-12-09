@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import uuid
 import shlex
 from io import BytesIO
 from typing import List
@@ -677,14 +678,14 @@ class KubeflowPipelines(object):
 
         compiler.Compiler().compile(pipeline_func, output_path)
 
-    def upload(self, pipeline_path):
+    def upload(self, pipeline_path, version_name=None):
         try:
             pipeline_id = self.kfp_client.get_pipeline_id(self.name)
         except Exception:
             pipeline_id = None
 
         if pipeline_id:
-            version_name = f"{self.name}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+            version_name = str(uuid.uuid4()) if version_name is None else version_name
             result = self.kfp_client.upload_pipeline_version(
                 pipeline_package_path=pipeline_path,
                 pipeline_version_name=version_name,
@@ -708,3 +709,82 @@ class KubeflowPipelines(object):
                 "action": "create",
                 "pipeline_id": result.pipeline_id,
             }
+
+    @classmethod
+    def trigger(
+        cls,
+        kfp_client,
+        name,
+        parameters=None,
+        experiment_name=None,
+        version_name=None
+    ):
+        try:
+            pipeline_id = kfp_client.get_pipeline_id(name)
+        except Exception:
+            pipeline_id = None
+
+        if pipeline_id is None:
+            raise KubeflowPipelineException(
+                f"Pipeline *{name}* not found on Kubeflow Pipelines."
+            )
+
+        pipeline_versions = []
+        next_page_token = ""
+        while True:
+            try:
+                versions_response = kfp_client.list_pipeline_versions(
+                    pipeline_id=pipeline_id,
+                    page_size=100,
+                    page_token=next_page_token
+                )
+            except Exception as e:
+                raise KubeflowPipelineException(
+                    f"Failed to fetch versions for pipeline *{name}*: {e}"
+                )
+
+            if versions_response.pipeline_versions:
+                pipeline_versions.extend(versions_response.pipeline_versions)
+
+            next_page_token = versions_response.next_page_token
+            if not next_page_token:
+                break
+
+        if not pipeline_versions:
+            raise KubeflowPipelineException(
+                f"No versions found for pipeline *{name}*."
+            )
+
+        if version_name is None:
+            # Sort by created_at desc and pick the first one
+            pipeline_versions.sort(key=lambda v: v.created_at, reverse=True)
+            version_id = pipeline_versions[0].pipeline_version_id
+        else:
+            version_id = None
+            for each_version in pipeline_versions:
+                if each_version.display_name == version_name:
+                    version_id = each_version.pipeline_version_id
+                    break
+
+            if version_id is None:
+                raise KubeflowPipelineException(
+                    f"Version *{version_name}* not found for pipeline *{name}*."
+                )
+
+        if experiment_name is None:
+            experiment_name = "Default"
+
+        try:
+            experiment = kfp_client.get_experiment(experiment_name=experiment_name)
+        except Exception:
+            experiment = kfp_client.create_experiment(name=experiment_name)
+
+        job_name = f"{name}_trigger_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        run = kfp_client.run_pipeline(
+            experiment_id=experiment.experiment_id,
+            job_name=job_name,
+            params=parameters,
+            pipeline_id=pipeline_id,
+            version_id=version_id,
+        )
+        return run

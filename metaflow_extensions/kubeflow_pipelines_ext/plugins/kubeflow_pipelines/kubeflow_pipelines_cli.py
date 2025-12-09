@@ -5,7 +5,7 @@ from kfp import Client
 from hashlib import sha1
 
 from metaflow._vendor import click
-from metaflow import current, decorators
+from metaflow import current, decorators, parameters
 from metaflow.package import MetaflowPackage
 from metaflow.util import get_username, to_bytes, to_unicode
 from metaflow.metaflow_config import FEAT_ALWAYS_UPLOAD_CODE_PACKAGE, KUBEFLOW_PIPELINES_URL
@@ -227,6 +227,11 @@ def kubeflow_pipelines(obj, name=None):
     help="The URL of the Kubeflow Pipelines API.",
 )
 @click.option(
+    "--version-name",
+    default=None,
+    help="The version name of the pipeline to upload.",
+)
+@click.option(
     "--yaml-only",
     is_flag=True,
     default=False,
@@ -247,6 +252,7 @@ def create(
     tags=None,
     user_namespace=None,
     url=None,
+    version_name=None,
     yaml_only=False,
     max_workers=None,
 ):
@@ -284,7 +290,7 @@ def create(
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=True) as tmp:
         flow.compile(tmp.name)
-        result = flow.upload(tmp.name)
+        result = flow.upload(tmp.name, version_name)
 
         if result["action"] == "create":
             obj.echo(
@@ -307,6 +313,60 @@ def create(
                 ),
                 bold=True,
             )
+
+@parameters.add_custom_parameters(deploy_mode=False)
+@kubeflow_pipelines.command(help="Trigger the workflow on Kubeflow Pipelines.")
+@click.option(
+    "--url",
+    default=KUBEFLOW_PIPELINES_URL,
+    show_default=True,
+    help="The URL of the Kubeflow Pipelines API.",
+)
+@click.option(
+    "--experiment",
+    default=None,
+    help="The experiment name to trigger the run under.",
+)
+@click.option(
+    "--version-name",
+    default=None,
+    help="The version name of the pipeline to trigger.",
+)
+@click.pass_obj
+def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
+    if not url:
+        raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
+
+    kfp_client = Client(host=url)
+
+    params = {}
+    for _, param in obj.flow._get_parameters():
+        k = param.name.replace("-", "_").lower()
+        if kwargs.get(k) is not None:
+            params[param.name] = kwargs[k]
+
+    obj.echo(
+        "Triggering *%s* on Kubeflow Pipelines..." % obj.pipeline_name,
+        bold=True,
+    )
+
+    run = KubeflowPipelines.trigger(
+        kfp_client,
+        obj.pipeline_name,
+        params,
+        experiment,
+        version_name,
+    )
+
+    obj.echo(
+        "Pipeline *{pipeline_name}* triggered successfully.\n"
+        "Run ID: *{run_id}*".format(
+            pipeline_name=obj.pipeline_name,
+            run_id=run.run_id,
+        ),
+        bold=True,
+    )
+
 
 def make_flow(
     obj,
