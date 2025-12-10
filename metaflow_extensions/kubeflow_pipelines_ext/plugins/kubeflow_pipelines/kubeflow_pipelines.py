@@ -788,3 +788,11 @@ class KubeflowPipelines(object):
             version_id=version_id,
         )
         return run
+
+    @classmethod
+    def get_status(cls, kfp_client, run_id):
+        try:
+            run_detail = kfp_client.get_run(run_id)
+            return run_detail.state
+        except Exception:
+            return None

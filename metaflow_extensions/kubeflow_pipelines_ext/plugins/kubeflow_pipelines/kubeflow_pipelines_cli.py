@@ -368,6 +368,30 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
     )
 
 
+@kubeflow_pipelines.command(help="Fetch flow execution status on Kubeflow Pipelines.")
+@click.option(
+    "--url",
+    default=KUBEFLOW_PIPELINES_URL,
+    show_default=True,
+    help="The URL of the Kubeflow Pipelines API.",
+)
+@click.option("--run-id", required=True, default=None, type=str)
+@click.pass_obj
+def status(obj, url=None, run_id=None):
+    obj.echo(
+        "Fetching status for run *{run_id}* ...".format(run_id=run_id),
+        bold=True,
+    )
+
+    kfp_client = Client(host=url)
+    run_status = KubeflowPipelines.get_status(kfp_client, run_id)
+
+    if run_status:
+        obj.echo("Status: *{status}*".format(status=run_status))
+    else:
+        obj.echo("Run *{run_id}* not found.".format(run_id=run_id))
+
+
 def make_flow(
     obj,
     pipeline_name,
