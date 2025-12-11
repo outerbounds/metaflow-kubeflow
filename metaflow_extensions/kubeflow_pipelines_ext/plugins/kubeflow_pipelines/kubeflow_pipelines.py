@@ -97,6 +97,7 @@ def get_version_id_from_version_name(
         # Sort by created_at desc and pick the first one
         pipeline_versions.sort(key=lambda v: v.created_at, reverse=True)
         version_id = pipeline_versions[0].pipeline_version_id
+        version_name = pipeline_versions[0].display_name
     else:
         version_id = None
         for each_version in pipeline_versions:
@@ -109,7 +110,7 @@ def get_version_id_from_version_name(
                 f"Version *{version_name}* not found for pipeline *{pipeline_name}*."
             )
 
-    return version_id
+    return version_id, version_name
 
 
 class KubeflowPipelines(object):
@@ -762,7 +763,7 @@ class KubeflowPipelines(object):
                 pipeline_id = result.pipeline_id
 
                 # get the initial version
-                version_id = get_version_id_from_version_name(
+                version_id, _ = get_version_id_from_version_name(
                     self.kfp_client,
                     self.name,
                     pipeline_id,
@@ -811,40 +812,46 @@ class KubeflowPipelines(object):
         experiment_name=None,
         version_name=None
     ):
-        try:
-            pipeline_id = kfp_client.get_pipeline_id(name)
-        except Exception:
-            pipeline_id = None
+        with suppress_kfp_output():
+            try:
+                pipeline_id = kfp_client.get_pipeline_id(name)
+            except Exception:
+                pipeline_id = None
 
-        if pipeline_id is None:
-            raise KubeflowPipelineException(
-                f"Pipeline *{name}* not found on Kubeflow Pipelines."
+            if pipeline_id is None:
+                raise KubeflowPipelineException(
+                    f"Pipeline *{name}* not found on Kubeflow Pipelines."
+                )
+
+            version_id, version_name = get_version_id_from_version_name(
+                kfp_client,
+                name,
+                pipeline_id,
+                version_name,
             )
 
-        version_id = get_version_id_from_version_name(
-            kfp_client,
-            name,
-            pipeline_id,
-            version_name,
-        )
+            if experiment_name is None:
+                experiment_name = "Default"
 
-        if experiment_name is None:
-            experiment_name = "Default"
+            try:
+                experiment = kfp_client.get_experiment(experiment_name=experiment_name)
+            except Exception:
+                experiment = kfp_client.create_experiment(name=experiment_name)
 
-        try:
-            experiment = kfp_client.get_experiment(experiment_name=experiment_name)
-        except Exception:
-            experiment = kfp_client.create_experiment(name=experiment_name)
+            job_name = f"{name}_trigger ({generate_short_id()})"
+            run = kfp_client.run_pipeline(
+                experiment_id=experiment.experiment_id,
+                job_name=job_name,
+                params=parameters,
+                pipeline_id=pipeline_id,
+                version_id=version_id,
+            )
 
-        job_name = f"{name}_trigger_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        run = kfp_client.run_pipeline(
-            experiment_id=experiment.experiment_id,
-            job_name=job_name,
-            params=parameters,
-            pipeline_id=pipeline_id,
-            version_id=version_id,
-        )
-        return run
+        return {
+            "run_id": run.run_id,
+            "version_id": version_id,
+            "version_name": version_name,
+        }
 
     @classmethod
     def get_status(cls, kfp_client, run_id):

@@ -346,7 +346,7 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
         bold=True,
     )
 
-    run = KubeflowPipelines.trigger(
+    result = KubeflowPipelines.trigger(
         kfp_client,
         obj.pipeline_name,
         params,
@@ -354,14 +354,22 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
         version_name,
     )
 
+    run_url = "{base_url}/#/runs/details/{run_id}".format(
+        base_url=url.rstrip('/'),
+        run_id=result['run_id']
+    )
+
     obj.echo(
         "Pipeline *{pipeline_name}* triggered successfully.\n"
+        "Version: *{version_name}*\n"
         "Run ID: *{run_id}*".format(
             pipeline_name=obj.pipeline_name,
-            run_id=run.run_id,
+            version_name=result['version_name'],
+            run_id=result['run_id'],
         ),
         bold=True,
     )
+    obj.echo("View Run at *{run_url}*".format(run_url=run_url), bold=True)
 
 
 @kubeflow_pipelines.command(help="Fetch flow execution status on Kubeflow Pipelines.")
