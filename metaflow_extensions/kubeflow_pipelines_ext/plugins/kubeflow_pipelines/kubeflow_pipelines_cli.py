@@ -379,21 +379,27 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
     show_default=True,
     help="The URL of the Kubeflow Pipelines API.",
 )
-@click.option("--run-id", required=True, default=None, type=str)
+@click.option(
+    "--kfp-run-id",
+    required=True,
+    default=None,
+    type=str,
+    help="Kubeflow Pipeline Run ID.",
+)
 @click.pass_obj
-def status(obj, url=None, run_id=None):
+def status(obj, url=None, kfp_run_id=None):
     obj.echo(
-        "Fetching status for run *{run_id}* ...".format(run_id=run_id),
+        "Fetching status for run *{kfp_run_id}* ...".format(kfp_run_id=kfp_run_id),
         bold=True,
     )
 
     kfp_client = Client(host=url)
-    run_status = KubeflowPipelines.get_status(kfp_client, run_id)
+    run_status = KubeflowPipelines.get_status(kfp_client, kfp_run_id)
 
     if run_status:
         obj.echo("Status: *{status}*".format(status=run_status))
     else:
-        obj.echo("Run *{run_id}* not found.".format(run_id=run_id))
+        obj.echo("Run *{kfp_run_id}* not found.".format(kfp_run_id=kfp_run_id))
 
 
 def make_flow(
