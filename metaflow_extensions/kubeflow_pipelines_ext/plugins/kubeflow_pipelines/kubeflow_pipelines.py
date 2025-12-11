@@ -210,16 +210,12 @@ class KubeflowPipelines(object):
         )
 
         additional_mf_variables = {
-            "AWS_ACCESS_KEY_ID": "rootuser",
-            "AWS_SECRET_ACCESS_KEY": "rootpass123",
-            "AWS_ENDPOINT_URL_S3": "http://host.docker.internal:9000",
             "METAFLOW_CODE_METADATA": self.code_package_metadata,
             "METAFLOW_CODE_SHA": self.code_package_sha,
             "METAFLOW_CODE_URL": self.code_package_url,
             "METAFLOW_CODE_DS": self.flow_datastore.TYPE,
             "METAFLOW_USER": "kubeflow-pipelines",
-            "METAFLOW_SERVICE_URL": "http://host.docker.internal:8080",
-            # "METAFLOW_SERVICE_URL": SERVICE_INTERNAL_URL,
+            "METAFLOW_SERVICE_URL": SERVICE_INTERNAL_URL,
             "METAFLOW_SERVICE_HEADERS": json.dumps(SERVICE_HEADERS),
             "METAFLOW_DATASTORE_SYSROOT_S3": DATASTORE_SYSROOT_S3,
             "METAFLOW_DATATOOLS_S3ROOT": DATATOOLS_S3ROOT,
