@@ -1,12 +1,16 @@
 import os
 import sys
 import json
-import uuid
 import shlex
+import string
+import secrets
 from io import BytesIO
 from typing import List
 from kfp import compiler
+from typing import Optional
 from datetime import timedelta, datetime
+from kfp.client.client import kfp_server_api
+from contextlib import redirect_stdout, redirect_stderr, contextmanager
 
 import metaflow.util as util
 from metaflow import current
@@ -39,6 +43,73 @@ from metaflow.metaflow_config import (
 
 from .kubeflow_pipelines_utils import KFPTask, KFPFlow
 from .kubeflow_pipelines_exceptions import KubeflowPipelineException
+
+
+def generate_short_id(length=12):
+    alphabet = string.ascii_letters + string.digits  # 62 characters (a-z, A-Z, 0-9)
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+@contextmanager
+def suppress_kfp_output():
+    with open(os.devnull, 'w') as devnull:
+        with redirect_stdout(devnull), redirect_stderr(devnull):
+            yield
+
+
+def get_version_id_from_version_name(
+    kfp_client,
+    pipeline_name,
+    pipeline_id,
+    version_name: Optional[str] = None
+):
+    """
+    Gets the version_id given a version_name
+    If version_name is None, gets the version_id of the latest version
+    """
+    pipeline_versions = []
+    next_page_token = ""
+    while True:
+        try:
+            versions_response = kfp_client.list_pipeline_versions(
+                pipeline_id=pipeline_id,
+                page_size=100,
+                page_token=next_page_token
+            )
+        except Exception as e:
+            raise KubeflowPipelineException(
+                f"Failed to fetch versions for pipeline *{pipeline_name}*: {e}"
+            )
+
+        if versions_response.pipeline_versions:
+            pipeline_versions.extend(versions_response.pipeline_versions)
+
+        next_page_token = versions_response.next_page_token
+        if not next_page_token:
+            break
+
+    if not pipeline_versions:
+        raise KubeflowPipelineException(
+            f"No versions found for pipeline *{pipeline_name}*."
+        )
+
+    if version_name is None:
+        # Sort by created_at desc and pick the first one
+        pipeline_versions.sort(key=lambda v: v.created_at, reverse=True)
+        version_id = pipeline_versions[0].pipeline_version_id
+    else:
+        version_id = None
+        for each_version in pipeline_versions:
+            if each_version.display_name == version_name:
+                version_id = each_version.pipeline_version_id
+                break
+
+        if version_id is None:
+            raise KubeflowPipelineException(
+                f"Version *{version_name}* not found for pipeline *{pipeline_name}*."
+            )
+
+    return version_id
 
 
 class KubeflowPipelines(object):
@@ -675,36 +746,61 @@ class KubeflowPipelines(object):
         compiler.Compiler().compile(pipeline_func, output_path)
 
     def upload(self, pipeline_path, version_name=None):
-        try:
-            pipeline_id = self.kfp_client.get_pipeline_id(self.name)
-        except Exception:
-            pipeline_id = None
+        with suppress_kfp_output():
+            try:
+                pipeline_id = self.kfp_client.get_pipeline_id(self.name)
+            except Exception:
+                pipeline_id = None
 
-        if pipeline_id:
-            version_name = str(uuid.uuid4()) if version_name is None else version_name
-            result = self.kfp_client.upload_pipeline_version(
-                pipeline_package_path=pipeline_path,
-                pipeline_version_name=version_name,
-                pipeline_id=pipeline_id,
-            )
+            if pipeline_id is None:
+                # create a new pipeline if it doesn't exist
+                result = self.kfp_client.upload_pipeline(
+                    pipeline_package_path=pipeline_path,
+                    pipeline_name=self.name,
+                    namespace=None,
+                )
+                pipeline_id = result.pipeline_id
 
-            return {
-                "action": "update",
-                "pipeline_id": pipeline_id,
-                "version_id": result.pipeline_version_id,
-                "version_name": version_name
-            }
-        else:
-            result = self.kfp_client.upload_pipeline(
-                pipeline_package_path=pipeline_path,
-                pipeline_name=self.name,
-                namespace=None,
-            )
+                # get the initial version
+                version_id = get_version_id_from_version_name(
+                    self.kfp_client,
+                    self.name,
+                    pipeline_id,
+                    version_name=self.name,
+                )
 
-            return {
-                "action": "create",
-                "pipeline_id": result.pipeline_id,
-            }
+                # delete the initial un-versioned "version"
+                self.kfp_client.delete_pipeline_version(
+                    pipeline_id,
+                    pipeline_version_id=version_id,
+                )
+
+            # now upload the new version
+            version_name = generate_short_id() if version_name is None else version_name
+            try:
+                result = self.kfp_client.upload_pipeline_version(
+                    pipeline_package_path=pipeline_path,
+                    pipeline_version_name=version_name,
+                    pipeline_id=pipeline_id,
+                )
+            except kfp_server_api.exceptions.ApiException as e:
+                if e.status == 409:
+                    raise KubeflowPipelineException(
+                        f"Pipeline version *{version_name}* already exists.\n"
+                        "Please specify a different version name using --version-name"
+                    )
+                else:
+                    raise KubeflowPipelineException(
+                        f"Failed to upload pipeline version {version_name} (HTTP {e.status}: {e.reason})"
+                    )
+            except Exception as e:
+                raise KubeflowPipelineException(f"Failed to upload pipeline version: {str(e)}") from e
+
+        return {
+            "pipeline_id": pipeline_id,
+            "version_id": result.pipeline_version_id,
+            "version_name": version_name
+        }
 
     @classmethod
     def trigger(
@@ -725,47 +821,12 @@ class KubeflowPipelines(object):
                 f"Pipeline *{name}* not found on Kubeflow Pipelines."
             )
 
-        pipeline_versions = []
-        next_page_token = ""
-        while True:
-            try:
-                versions_response = kfp_client.list_pipeline_versions(
-                    pipeline_id=pipeline_id,
-                    page_size=100,
-                    page_token=next_page_token
-                )
-            except Exception as e:
-                raise KubeflowPipelineException(
-                    f"Failed to fetch versions for pipeline *{name}*: {e}"
-                )
-
-            if versions_response.pipeline_versions:
-                pipeline_versions.extend(versions_response.pipeline_versions)
-
-            next_page_token = versions_response.next_page_token
-            if not next_page_token:
-                break
-
-        if not pipeline_versions:
-            raise KubeflowPipelineException(
-                f"No versions found for pipeline *{name}*."
-            )
-
-        if version_name is None:
-            # Sort by created_at desc and pick the first one
-            pipeline_versions.sort(key=lambda v: v.created_at, reverse=True)
-            version_id = pipeline_versions[0].pipeline_version_id
-        else:
-            version_id = None
-            for each_version in pipeline_versions:
-                if each_version.display_name == version_name:
-                    version_id = each_version.pipeline_version_id
-                    break
-
-            if version_id is None:
-                raise KubeflowPipelineException(
-                    f"Version *{version_name}* not found for pipeline *{name}*."
-                )
+        version_id = get_version_id_from_version_name(
+            kfp_client,
+            name,
+            pipeline_id,
+            version_name,
+        )
 
         if experiment_name is None:
             experiment_name = "Default"

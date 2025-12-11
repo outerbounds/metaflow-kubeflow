@@ -292,27 +292,23 @@ def create(
         flow.compile(tmp.name)
         result = flow.upload(tmp.name, version_name)
 
-        if result["action"] == "create":
-            obj.echo(
-                "Pipeline *{pipeline_name}* "
-                "for flow *{name}* compiled to "
-                "Kubeflow Pipelines successfully.\n".format(
-                    pipeline_name=obj.pipeline_name,
-                    name=current.flow_name,
-                ),
-                bold=True,
-            )
-        elif result["action"] == "update":
-            obj.echo(
-                "Version *{version_name}* of pipeline *{pipeline_name}* "
-                "for flow *{name}* compiled to "
-                "Kubeflow Pipelines successfully.\n".format(
-                    version_name=result["version_name"],
-                    pipeline_name=obj.pipeline_name,
-                    name=current.flow_name,
-                ),
-                bold=True,
-            )
+        pipeline_url = "{base_url}/#/pipelines/details/{pipeline_id}/version/{version_id}".format(
+            base_url=url.rstrip('/'),
+            pipeline_id=result['pipeline_id'],
+            version_id=result['version_id']
+        )
+
+        obj.echo(
+            "Version *{version_name}* of pipeline *{pipeline_name}* "
+            "for flow *{name}* compiled to "
+            "Kubeflow Pipelines successfully.\n".format(
+                version_name=result["version_name"],
+                pipeline_name=obj.pipeline_name,
+                name=current.flow_name,
+            ),
+            bold=True,
+        )
+        obj.echo("View at *{pipeline_url}*".format(pipeline_url=pipeline_url), bold=True)
 
 @parameters.add_custom_parameters(deploy_mode=False)
 @kubeflow_pipelines.command(help="Trigger the workflow on Kubeflow Pipelines.")
