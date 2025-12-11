@@ -2,13 +2,11 @@ import os
 import sys
 import json
 import shlex
-import string
-import secrets
 from io import BytesIO
 from typing import List
 from kfp import compiler
 from typing import Optional
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from kfp.client.client import kfp_server_api
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 
@@ -43,11 +41,6 @@ from metaflow.metaflow_config import (
 
 from .kubeflow_pipelines_utils import KFPTask, KFPFlow
 from .kubeflow_pipelines_exceptions import KubeflowPipelineException
-
-
-def generate_short_id(length=12):
-    alphabet = string.ascii_letters + string.digits  # 62 characters (a-z, A-Z, 0-9)
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 @contextmanager
@@ -777,7 +770,7 @@ class KubeflowPipelines(object):
                 )
 
             # now upload the new version
-            version_name = generate_short_id() if version_name is None else version_name
+            version_name = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") if version_name is None else version_name
             try:
                 result = self.kfp_client.upload_pipeline_version(
                     pipeline_package_path=pipeline_path,
@@ -838,7 +831,7 @@ class KubeflowPipelines(object):
             except Exception:
                 experiment = kfp_client.create_experiment(name=experiment_name)
 
-            job_name = f"{name}_trigger ({generate_short_id()})"
+            job_name = f"{name} ({datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")})"
             run = kfp_client.run_pipeline(
                 experiment_id=experiment.experiment_id,
                 job_name=job_name,
