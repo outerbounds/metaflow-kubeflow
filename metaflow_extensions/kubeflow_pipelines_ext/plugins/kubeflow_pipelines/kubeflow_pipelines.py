@@ -586,7 +586,7 @@ class KubeflowPipelines(object):
                 base_paths = ",".join(input_paths_parts) if input_paths_parts else ""
                 if not self.graph[node.split_parents[-1]].parallel_foreach:
                     input_paths = (
-                        f'$(python -m metaflow.plugins.kfp.generate_input_paths %s %s "$0")'
+                        f'$(python -m metaflow.plugins.kubeflow_pipelines.generate_input_paths %s %s "$0")'
                         % (
                             exit_step_name,
                             base_paths,  # Use base_paths, not undefined input_paths
