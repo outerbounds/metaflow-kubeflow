@@ -835,7 +835,7 @@ class KubeflowPipelines(object):
             except Exception:
                 experiment = kfp_client.create_experiment(name=experiment_name)
 
-            job_name = f"{name} ({datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")})"
+            job_name = f"{name} ({datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')})"
             run = kfp_client.run_pipeline(
                 experiment_id=experiment.experiment_id,
                 job_name=job_name,

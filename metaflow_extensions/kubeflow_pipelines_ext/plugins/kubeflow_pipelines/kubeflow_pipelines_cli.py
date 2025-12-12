@@ -142,7 +142,7 @@ def resolve_pipeline_name(name):
                 "--name is not supported for @projects. " "Use --branch instead."
             )
         pipeline_name = current.project_flow_name
-        if pipeline_name and VALID_NAME.fullmatch(pipeline_name):
+        if pipeline_name and VALID_NAME.search(pipeline_name):
             raise MetaflowException(
                 "Name '%s' contains invalid characters. Please construct a name using regex %s"
                 % (pipeline_name, VALID_NAME.pattern)
@@ -153,7 +153,7 @@ def resolve_pipeline_name(name):
             % to_unicode(base64.b32encode(sha1(project_branch).digest()))[:16]
         )
     else:
-        if name and VALID_NAME.fullmatch(name):
+        if name and VALID_NAME.search(name):
             raise MetaflowException(
                 "Name '%s' contains invalid characters. Please construct a name using regex %s"
                 % (name, VALID_NAME.pattern)
