@@ -79,6 +79,10 @@ class KFPTask(object):
 
         task.set_caching_options(enable_caching=False)
 
+        runtime_limit = self.k8s_resources.get("runtime_limit")
+        if runtime_limit is not None and runtime_limit > 0:
+            kubernetes.set_timeout(task, runtime_limit)
+
         for k, v in self.env_vars.items():
             task.set_env_variable(k, v)
 

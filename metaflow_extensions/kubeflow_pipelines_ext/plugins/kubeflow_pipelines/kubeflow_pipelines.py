@@ -398,6 +398,7 @@ class KubeflowPipelines(object):
             "namespace": k8s_namespace,
             "secrets": list(set(secrets)),
             "pod_resources": pod_resources,
+            "runtime_limit": k8s_deco.run_time_limit,
         }
 
     def get_inputs_and_outputs(self, node):
