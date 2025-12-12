@@ -2,7 +2,6 @@ import re
 import json
 import base64
 import tempfile
-from kfp import Client
 from hashlib import sha1
 
 from metaflow._vendor import click
@@ -259,6 +258,7 @@ def create(
     if not yaml_only and not url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
+    from kfp import Client
     kfp_client = Client(host=url) if url else None
 
     obj.echo("Compiling *%s* to Kubeflow Pipelines..." % obj.pipeline_name, bold=True)
@@ -333,6 +333,7 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
     if not url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
+    from kfp import Client
     kfp_client = Client(host=url)
 
     params = {}
@@ -399,6 +400,7 @@ def status(obj, url=None, kfp_run_id=None):
         bold=True,
     )
 
+    from kfp import Client
     kfp_client = Client(host=url)
     run_status = KubeflowPipelines.get_status(kfp_client, kfp_run_id)
 

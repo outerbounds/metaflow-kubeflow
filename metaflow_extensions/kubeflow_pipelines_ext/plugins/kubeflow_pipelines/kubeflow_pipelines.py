@@ -4,10 +4,8 @@ import json
 import shlex
 from io import BytesIO
 from typing import List
-from kfp import compiler
 from typing import Optional
 from datetime import timedelta, datetime, timezone
-from kfp.client.client import kfp_server_api
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 
 import metaflow.util as util
@@ -39,7 +37,6 @@ from metaflow.metaflow_config import (
 )
 
 
-from .kubeflow_pipelines_utils import KFPTask, KFPFlow
 from .kubeflow_pipelines_exceptions import KubeflowPipelineException
 
 
@@ -463,6 +460,8 @@ class KubeflowPipelines(object):
         return inputs, input_args, outputs, output_args
 
     def create_kfp_task(self, node):
+        from .kubeflow_pipelines_utils import KFPTask
+
         inputs, input_args, outputs, output_args = self.get_inputs_and_outputs(node)
         resources = self._get_kubernetes_resources(node)
         env_vars = self._get_environment_variables(node)
@@ -487,7 +486,7 @@ class KubeflowPipelines(object):
         kfp_task_obj.args = args
         return kfp_task_obj
 
-    def _step_cli(self, node, kfp_task: KFPTask):
+    def _step_cli(self, node, kfp_task):
         script_name = os.path.basename(sys.argv[0])
         executable = self.environment.executable(node.name)
         entrypoint = [executable, script_name]
@@ -720,6 +719,9 @@ class KubeflowPipelines(object):
         return cmds[2]
 
     def compile(self, output_path):
+        from kfp import compiler
+        from .kubeflow_pipelines_utils import KFPFlow
+
         if self.flow._flow_decorators.get("trigger") or self.flow._flow_decorators.get(
             "trigger_on_finish"
         ):
@@ -749,6 +751,8 @@ class KubeflowPipelines(object):
         compiler.Compiler().compile(pipeline_func, output_path)
 
     def upload(self, pipeline_path, version_name=None):
+        from kfp.client.client import kfp_server_api
+
         with suppress_kfp_output():
             try:
                 pipeline_id = self.kfp_client.get_pipeline_id(self.name)
