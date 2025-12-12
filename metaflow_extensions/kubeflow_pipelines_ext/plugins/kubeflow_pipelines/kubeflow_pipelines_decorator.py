@@ -27,7 +27,11 @@ class KFPInternalDecorator(StepDecorator):
         self.graph = graph
 
         meta = {}
-        meta["kfp-template-owner"] = os.environ.get("METAFLOW_OWNER", "unknown")
+        meta["kfp-template-owner"] = os.environ.get("METAFLOW_OWNER")
+        meta["kfp-pod-name"] = os.environ.get("KFP_POD_NAME")
+        meta["kfp-pod-uid"] = os.environ.get("KFP_POD_UID")
+        meta["kfp-namespace"] = os.environ.get("METAFLOW_KUBERNETES_POD_NAMESPACE")
+        meta["kfp-service-account"] = os.environ.get("METAFLOW_KUBERNETES_SERVICE_ACCOUNT_NAME")
 
         entries = [
             MetaDatum(
