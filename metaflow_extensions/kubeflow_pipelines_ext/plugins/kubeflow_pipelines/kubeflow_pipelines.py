@@ -258,6 +258,10 @@ class KubeflowPipelines(object):
         env["METAFLOW_STEP_NAME"] = node.name
         env["METAFLOW_OWNER"] = self.username
 
+        env["KFP_PIPELINE_NAME"] = self.name
+        env["KFP_RUN_NAME"] = "{{workflow.annotations.pipelines.kubeflow.org/run_name}}"
+        env["KFP_RUN_ID"] = "{{workflow.labels.pipeline/runid}}"
+
         metadata_env = self.metadata.get_runtime_environment("kubeflow-pipelines")
         env.update(metadata_env)
 
@@ -295,7 +299,7 @@ class KubeflowPipelines(object):
             "METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT": AZURE_STORAGE_BLOB_SERVICE_ENDPOINT,
             "METAFLOW_DATASTORE_SYSROOT_AZURE": DATASTORE_SYSROOT_AZURE,
             "METAFLOW_CARD_AZUREROOT": CARD_AZUREROOT,
-            "METAFLOW_RUN_ID": "kfp-{{workflow.name}}",
+            "METAFLOW_RUN_ID": "kfp-{{workflow.labels.pipeline/runid}}",
             "METAFLOW_KUBERNETES_WORKLOAD": str(1),
         }
 
@@ -483,7 +487,7 @@ class KubeflowPipelines(object):
         executable = self.environment.executable(node.name)
         entrypoint = [executable, script_name]
 
-        run_id = "kfp-{{workflow.name}}"
+        run_id = "kfp-{{workflow.labels.pipeline/runid}}"
         task_id_base_parts = [
             node.name,
             "{{workflow.creationTimestamp}}",

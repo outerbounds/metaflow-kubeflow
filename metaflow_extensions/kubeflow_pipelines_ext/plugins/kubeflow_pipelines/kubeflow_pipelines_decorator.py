@@ -28,6 +28,9 @@ class KFPInternalDecorator(StepDecorator):
 
         meta = {}
         meta["kfp-template-owner"] = os.environ.get("METAFLOW_OWNER")
+        meta["kfp-pipeline-name"] = os.environ.get("KFP_PIPELINE_NAME")
+        meta["kfp-run-name"] = os.environ.get("KFP_RUN_NAME")
+        meta["kfp-run-id"] = os.environ.get("KFP_RUN_ID")
         meta["kfp-pod-name"] = os.environ.get("KFP_POD_NAME")
         meta["kfp-pod-uid"] = os.environ.get("KFP_POD_UID")
         meta["kfp-namespace"] = os.environ.get("METAFLOW_KUBERNETES_POD_NAMESPACE")
