@@ -1,4 +1,5 @@
 import re
+import json
 import base64
 import tempfile
 from kfp import Client
@@ -16,7 +17,6 @@ from metaflow.plugins.aws.step_functions.production_token import (
     store_token,
 )
 from metaflow.plugins.kubernetes.kubernetes_decorator import KubernetesDecorator
-
 
 from .kubeflow_pipelines import KubeflowPipelines
 from .kubeflow_pipelines_exceptions import KubeflowPipelineException
@@ -338,8 +338,14 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
     params = {}
     for _, param in obj.flow._get_parameters():
         k = param.name.replace("-", "_").lower()
-        if kwargs.get(k) is not None:
-            params[param.name] = kwargs[k]
+        val = kwargs.get(k)
+        if val is not None:
+            if param.kwargs.get("type") == parameters.JSONType:
+                if not isinstance(val, str):
+                    val = json.dumps(val)
+            elif isinstance(val, parameters.DelayedEvaluationParameter):
+                val = val(return_str=True)
+            params[param.name] = val
 
     obj.echo(
         "Triggering *%s* on Kubeflow Pipelines..." % obj.pipeline_name,

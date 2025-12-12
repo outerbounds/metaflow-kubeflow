@@ -14,7 +14,7 @@ import metaflow.util as util
 from metaflow import current
 from metaflow.decorators import flow_decorators
 from metaflow.exception import MetaflowException
-from metaflow.parameters import deploy_time_eval
+from metaflow.parameters import deploy_time_eval, JSONType
 from metaflow.metaflow_config_funcs import config_values
 from metaflow.plugins.kubernetes.kube_utils import qos_requests_and_limits
 from metaflow.mflog import BASH_SAVE_LOGS, bash_capture_logs, export_mflog_env_vars
@@ -217,6 +217,11 @@ class KubeflowPipelines(object):
                     "currently supported." % param.name
                 )
             default_value = deploy_time_eval(param.kwargs.get("default"))
+
+            if py_type == JSONType:
+                py_type = str
+                if default_value is not None and not isinstance(default_value, str):
+                    default_value = json.dumps(default_value)
 
             parameters[param.name] = dict(
                 python_var_name=var,
@@ -598,7 +603,7 @@ class KubeflowPipelines(object):
             param_cli_args = []
             num_outputs = len(kfp_task.outputs)
             for i, p in enumerate(self.parameters.values()):
-                param_cli_args.append('--%s "$%d"' % (p["name"], num_outputs + i))
+                param_cli_args.append('--%s \\"$%d\\"' % (p["name"], num_outputs + i))
 
             init = (
                 entrypoint
