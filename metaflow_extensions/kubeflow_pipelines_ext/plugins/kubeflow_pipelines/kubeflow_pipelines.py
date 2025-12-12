@@ -10,6 +10,7 @@ from contextlib import redirect_stdout, redirect_stderr, contextmanager
 
 import metaflow.util as util
 from metaflow import current
+from metaflow.includefile import FilePathClass
 from metaflow.decorators import flow_decorators
 from metaflow.exception import MetaflowException
 from metaflow.parameters import deploy_time_eval, JSONType
@@ -219,6 +220,9 @@ class KubeflowPipelines(object):
                 py_type = str
                 if default_value is not None and not isinstance(default_value, str):
                     default_value = json.dumps(default_value)
+
+            if isinstance(py_type, FilePathClass):
+                py_type = str
 
             parameters[param.name] = dict(
                 python_var_name=var,
