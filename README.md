@@ -1,1 +1,75 @@
 # Kubeflow Pipelines extension for Metaflow
+
+This extension adds support for compiling and executing Metaflow flows on Kubeflow Pipelines (with argo workflows backend).
+
+## Basic Usage
+
+- Have access to a Kubeflow Pipelines instance with the API server URL.
+- Use the CLI commands to compile your flow into a Kubeflow Pipeline and deploy it.
+
+## Compiling and Deploying a Pipeline
+
+```py
+python my_flow.py kubeflow-pipelines create \
+    --url https://my-kubeflow-instance.com
+```
+
+This command will:
+
+- Compile your Metaflow flow into a Kubeflow Pipeline YAML specification
+- Upload it to your Kubeflow Pipelines instance
+- Create a new version of the pipeline
+
+The Kubeflow Pipelines URL can also be configured via the environment variable: `METAFLOW_KUBEFLOW_PIPELINES_URL`
+
+## Available Commands
+
+1. create - Compile and/or Deploy Pipeline
+
+Compile a new version of your flow to Kubeflow Pipelines:
+
+```py
+python my_flow.py kubeflow-pipelines create \
+    --url https://my-kubeflow-instance.com \
+    --version-name v1.0.0
+```
+
+Use `--help` for all available options including tags, namespace, max-workers, and production token management.
+
+The `--version-name` allows one to deploy a custom version name. Else, a new version with UTC timestamp is created on each subsequent usage.
+
+One can also pass `--yaml-only` for exporting the YAML file without uploading to Kubeflow Pipelines.
+
+2. trigger - Execute Pipeline
+
+Trigger an execution of your deployed pipeline:
+
+```py
+python my_flow.py kubeflow-pipelines trigger \
+    --url https://my-kubeflow-instance.com \
+    --experiment my-experiment \
+    --alpha 0.1 \
+    --max-epochs 100
+```
+
+Flow parameters can be passed as command-line arguments. Use `--help` for all available options.
+
+By default, the latest version of the deployed pipeline is used for the trigger. Else, one can also pass in a custom version using `--version-name`.
+
+3. status - Check Execution Status
+
+Fetch the status of a running or completed pipeline execution:
+
+```py
+python my_flow.py kubeflow-pipelines status \
+    --url https://my-kubeflow-instance.com \
+    --kfp-run-id abc-123-def-456
+```
+
+Use `--help` for all available options.
+
+## Youtube Screencast
+
+[![metaflow kubeflow demo](https://img.youtube.com/vi/ALg0A9SzRG8/0.jpg)](https://www.youtube.com/watch?v=ALg0A9SzRG8)
+
+### Fin.
