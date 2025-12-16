@@ -1,6 +1,7 @@
 # Kubeflow Pipelines extension for Metaflow
 
-This extension adds support for compiling and executing Metaflow flows on Kubeflow Pipelines (with argo workflows backend).
+This extension adds support for compiling and executing Metaflow flows on Kubeflow Pipelines
+(with *argo workflows* backend).
 
 ## Basic Usage
 
