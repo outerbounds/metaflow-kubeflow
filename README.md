@@ -24,7 +24,7 @@ The Kubeflow Pipelines URL can also be configured via the environment variable: 
 
 ## Available Commands
 
-1. create - Compile and/or Deploy Pipeline
+### 1. **create** - Compile and/or Deploy Pipeline
 
 Compile a new version of your flow to Kubeflow Pipelines:
 
@@ -40,7 +40,7 @@ The `--version-name` allows one to deploy a custom version name. Else, a new ver
 
 One can also pass `--yaml-only` for exporting the YAML file without uploading to Kubeflow Pipelines.
 
-2. trigger - Execute Pipeline
+### 2. **trigger** - Execute Pipeline
 
 Trigger an execution of your deployed pipeline:
 
@@ -56,7 +56,7 @@ Flow parameters can be passed as command-line arguments. Use `--help` for all av
 
 By default, the latest version of the deployed pipeline is used for the trigger. Else, one can also pass in a custom version using `--version-name`.
 
-3. status - Check Execution Status
+### 3. **status** - Check Execution Status
 
 Fetch the status of a running or completed pipeline execution:
 
