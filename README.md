@@ -34,7 +34,7 @@ python my_flow.py kubeflow-pipelines create \
     --version-name v1.0.0
 ```
 
-Use `--help` for all available options including tags, namespace, max-workers, and production token management.
+Use `--help` for all available options including `tags`, `namespace`, `max-workers`, and production token management.
 
 The `--version-name` allows one to deploy a custom version name. Else, a new version with UTC timestamp is created on each subsequent usage.
 
