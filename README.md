@@ -26,6 +26,18 @@ This command will:
 
 The Kubeflow Pipelines URL can also be configured via the environment variable: `METAFLOW_KUBEFLOW_PIPELINES_URL`
 
+### Accessing Kubeflow Pipelines locally from a Kubernetes Cluster
+
+If you have Kubeflow Pipelines deployed in a Kubernetes cluster, you can port-forward the service:
+```bash
+kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8081:80
+```
+
+Then set the environment variable:
+```bash
+export METAFLOW_KUBEFLOW_PIPELINES_URL=http://localhost:8081
+```
+
 ## Available Commands
 
 ### 1. **create** - Compile and/or Deploy Pipeline
