@@ -24,19 +24,20 @@ This command will:
 - Upload it to your Kubeflow Pipelines instance
 - Create a new version of the pipeline
 
-The Kubeflow Pipelines URL can also be configured via the environment variable: `METAFLOW_KUBEFLOW_PIPELINES_URL`
+### Accessing Kubeflow Pipelines for Deployment
 
-### Accessing Kubeflow Pipelines locally from a Kubernetes Cluster
+Metaflow needs to be able to connect to Kubeflow Pipelines for deployment. If you have connectivity already set up, you don't need to do anything.
 
-If you have Kubeflow Pipelines deployed in a Kubernetes cluster, you can port-forward the service:
+If you can't connect to the service directly, you can set up a port forward to the service:
 ```bash
 kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8081:80
 ```
 
-Then set the environment variable:
-```bash
-export METAFLOW_KUBEFLOW_PIPELINES_URL=http://localhost:8081
-```
+After this, you can specify the service URL as `http://localhost:8081` in one of these ways:
+
+- On the CLI for `kubeflow-pipelines` commands with the `--url` option
+- In the Metaflow config, specify `"METAFLOW_KUBEFLOW_PIPELINES_URL": "http://localhost:8081"`
+- Set an environment variable, `METAFLOW_KUBEFLOW_PIPELINES_URL=http://localhost:8081`
 
 ## Available Commands
 
