@@ -7,6 +7,10 @@ Compile and run Metaflow flows on Kubeflow Pipelines (**argo workflows** backend
 - Have access to a Kubeflow Pipelines instance with the API server URL.
 - Use the CLI commands to compile your flow into a Kubeflow Pipeline and deploy it.
 
+## Youtube Screencast
+
+[![metaflow kubeflow demo](https://img.youtube.com/vi/ALg0A9SzRG8/0.jpg)](https://www.youtube.com/watch?v=ALg0A9SzRG8)
+
 ## Compiling and Deploying a Pipeline
 
 ```py
@@ -67,9 +71,5 @@ python my_flow.py kubeflow-pipelines status \
 ```
 
 Use `--help` for all available options.
-
-## Youtube Screencast
-
-[![metaflow kubeflow demo](https://img.youtube.com/vi/ALg0A9SzRG8/0.jpg)](https://www.youtube.com/watch?v=ALg0A9SzRG8)
 
 ### Fin.
