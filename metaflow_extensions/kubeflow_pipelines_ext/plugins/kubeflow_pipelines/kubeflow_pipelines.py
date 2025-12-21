@@ -150,15 +150,20 @@ class KubeflowPipelines(object):
         self.parameters = self._process_parameters()
 
     @classmethod
-    def extract_token_from_kfp_spec(cls, name, pipeline_spec):
+    def extract_metadata_from_kfp_spec(cls, name, pipeline_spec):
         try:
             k8s_spec = pipeline_spec['platform_spec']['platforms']['kubernetes']
             executors = k8s_spec['deploymentSpec']['executors']
             first_executor = next(iter(executors.values()))
             annotations = first_executor['podMetadata']['annotations']
+
             owner = annotations['metaflow/owner']
             token = annotations['metaflow/production_token']
-            return (owner, token)
+            flow_name = annotations['metaflow/flow_name']
+            project_name = annotations.get("metaflow/project_name", None)
+            branch_name = annotations.get("metaflow/branch_name", None)
+
+            return (owner, token, flow_name, project_name, branch_name)
         except (StopIteration, KeyError, TypeError, AttributeError):
             raise KubeflowPipelineException(
                 "An existing non-metaflow workflow with the same name as "
@@ -190,7 +195,8 @@ class KubeflowPipelines(object):
                 )
 
                 pipeline_spec = pipeline_version_obj.pipeline_spec
-                return cls.extract_token_from_kfp_spec(name, pipeline_spec)
+                owner, token, _, _, _ = cls.extract_metadata_from_kfp_spec(name, pipeline_spec)
+                return owner, token
 
             return None
 
@@ -812,10 +818,10 @@ class KubeflowPipelines(object):
                     )
                 else:
                     raise KubeflowPipelineException(
-                        f"Failed to upload pipeline version {version_name} (HTTP {e.status}: {e.reason})"
+                        f"Failed to upload pipeline version *{version_name}* (HTTP {e.status}: {e.reason})"
                     )
             except Exception as e:
-                raise KubeflowPipelineException(f"Failed to upload pipeline version: {str(e)}") from e
+                raise KubeflowPipelineException(f"Failed to upload pipeline version *{version_name}*: {str(e)}") from e
 
         return {
             "pipeline_id": pipeline_id,
@@ -880,3 +886,23 @@ class KubeflowPipelines(object):
             return run_detail.state
         except Exception:
             return None
+
+    @classmethod
+    def terminate_run(cls, kfp_client, run_id):
+        try:
+            status = cls.get_status(kfp_client, run_id)
+
+            terminal_states = {
+                "SUCCEEDED",
+                "SKIPPED",
+                "FAILED",
+                "CANCELED"
+            }
+
+            if status in terminal_states:
+                return False
+
+            kfp_client.terminate_run(run_id)
+            return True
+        except Exception as e:
+            raise KubeflowPipelineException(f"Failed to terminate run *{run_id}*: {str(e)}") from e

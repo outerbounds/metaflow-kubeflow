@@ -85,4 +85,16 @@ python my_flow.py kubeflow-pipelines status \
 
 Use `--help` for all available options.
 
+### 4. **terminate** - Terminate Execution
+
+Terminate a running pipeline execution:
+
+```py
+python my_flow.py kubeflow-pipelines terminate \
+    --url https://my-kubeflow-instance.com \
+    --kfp-run-id abc-123-def-456
+```
+
+Use `--help` for all available options.
+
 ### Fin.

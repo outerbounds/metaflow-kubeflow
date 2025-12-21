@@ -21,6 +21,10 @@ from .kubeflow_pipelines import KubeflowPipelines
 from .kubeflow_pipelines_exceptions import KubeflowPipelineException
 
 
+class RunIdMismatch(MetaflowException):
+    headline = "Run ID mismatch"
+
+
 class IncorrectProductionToken(MetaflowException):
     headline = "Incorrect production token"
 
@@ -315,6 +319,7 @@ def create(
         )
         obj.echo("View at *{pipeline_url}*".format(pipeline_url=pipeline_url), bold=True)
 
+
 @parameters.add_custom_parameters(deploy_mode=False)
 @kubeflow_pipelines.command(help="Trigger the workflow on Kubeflow Pipelines.")
 @click.option(
@@ -400,6 +405,9 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
 )
 @click.pass_obj
 def status(obj, url=None, kfp_run_id=None):
+    if not url:
+        raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
+
     obj.echo(
         "Fetching status for run *{kfp_run_id}* ...".format(kfp_run_id=kfp_run_id),
         bold=True,
@@ -413,6 +421,153 @@ def status(obj, url=None, kfp_run_id=None):
         obj.echo("Status: *{status}*".format(status=run_status))
     else:
         obj.echo("Run *{kfp_run_id}* not found.".format(kfp_run_id=kfp_run_id))
+
+
+@kubeflow_pipelines.command(help="Terminate flow execution on Kubeflow Pipelines.")
+@click.option(
+    "--url",
+    default=KUBEFLOW_PIPELINES_URL,
+    show_default=True,
+    help="The URL of the Kubeflow Pipelines API.",
+)
+@click.option(
+    "--authorize",
+    default=None,
+    type=str,
+    help="Authorize the termination with a production token",
+)
+@click.option(
+    "--kfp-run-id",
+    required=True,
+    default=None,
+    type=str,
+    help="Kubeflow Pipeline Run ID.",
+)
+@click.pass_obj
+def terminate(obj, url=None, authorize=None, kfp_run_id=None):
+    if not url:
+        raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
+
+    def _token_instructions(flow_name, prev_user):
+        obj.echo(
+            "There is an existing version of *%s* on Kubeflow Pipelines which was "
+            "deployed by the user *%s*." % (flow_name, prev_user)
+        )
+        obj.echo(
+            "To terminate this flow, you need to use the same production token that they used."
+        )
+        obj.echo(
+            "Please reach out to them to get the token. Once you have it, call "
+            "this command:"
+        )
+        obj.echo("    kubeflow-pipelines terminate --authorize MY_TOKEN --kfp-run-id RUN_ID", fg="green")
+        obj.echo(
+            'See "Organizing Results" at docs.metaflow.org for more information '
+            "about production tokens."
+        )
+
+    obj.echo(
+        "Terminating run *{run_id}* for {flow_name} ...".format(
+            run_id=kfp_run_id, flow_name=obj.flow.name
+        ),
+        bold=True,
+    )
+
+    from kfp import Client
+    kfp_client = Client(host=url)
+
+    validate_run_id(
+        kfp_client,
+        obj.pipeline_name,
+        kfp_run_id,
+        obj.token_prefix,
+        authorize,
+        _token_instructions,
+    )
+
+    terminate_status = KubeflowPipelines.terminate_run(kfp_client, kfp_run_id)
+
+    if terminate_status:
+        obj.echo("\nRun terminated.")
+    else:
+        obj.echo("\nRun has already finished.")
+
+
+def validate_run_id(
+    kfp_client,
+    name,
+    run_id,
+    token_prefix,
+    authorize,
+    instructions_fn=None,
+):
+    from kfp.client.client import kfp_server_api
+
+
+    try:
+        run_detail = kfp_client.get_run(run_id)
+
+        pipeline_spec = run_detail.pipeline_spec
+        if pipeline_spec is None:
+            pipeline_version_ref = run_detail.pipeline_version_reference
+            pipeline_id = pipeline_version_ref.pipeline_id
+            version_id = pipeline_version_ref.pipeline_version_id
+            pipeline_version_obj = kfp_client.get_pipeline_version(
+                pipeline_id,
+                version_id,
+            )
+            pipeline_spec = pipeline_version_obj.pipeline_spec
+
+        (
+            owner,
+            token,
+            flow_name,
+            project_name,
+            branch_name
+        ) = KubeflowPipelines.extract_metadata_from_kfp_spec(name, pipeline_spec)
+
+        if current.flow_name != flow_name:
+            raise RunIdMismatch(
+                "The pipeline with the run_id *%s* belongs to the flow *%s*, not for the flow *%s*."
+                % (run_id, flow_name, current.flow_name)
+            )
+
+        if project_name is not None:
+            if current.get("project_name") != project_name:
+                raise RunIdMismatch(
+                    "The pipeline belongs to the project *%s*. "
+                    "Please use the project decorator or --name to target the correct project"
+                    % project_name
+                )
+
+            if current.get("branch_name") != branch_name:
+                raise RunIdMismatch(
+                    "The pipeline belongs to the branch *%s*. "
+                    "Please use --branch, --production or --name to target the correct branch"
+                    % branch_name
+                )
+
+        if authorize is None:
+            authorize = load_token(token_prefix)
+        elif authorize.startswith("production:"):
+            authorize = authorize[11:]
+
+        if owner != get_username() and authorize != token:
+            if instructions_fn:
+                instructions_fn(flow_name=name, prev_user=owner)
+            raise IncorrectProductionToken("Try again with the correct production token.")
+
+        return True
+    except kfp_server_api.exceptions.ApiException as e:
+        if e.status == 404:
+            raise KubeflowPipelineException(
+                f"Pipeline run *{run_id}* not found.")
+        else:
+            raise KubeflowPipelineException(
+                f"Failed to validate pipeline run *{run_id}* (HTTP {e.status}: {e.reason})"
+            )
+    except Exception as e:
+        raise KubeflowPipelineException(f"Failed to validate run *{run_id}*: {str(e)}") from e
 
 
 def make_flow(
