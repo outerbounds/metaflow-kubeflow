@@ -287,8 +287,8 @@ class KubeflowPipelines(object):
                     "minutes_between_retries", minutes_between_retries
                 )
             user_code_retries, error_retries = deco.step_task_retry_count()
-            max_user_code_retries = max(max_user_code_retries, user_code_retries)
-            max_error_retries = max(max_error_retries, error_retries)
+            max_user_code_retries = max(max_user_code_retries, user_code_retries or 0)
+            max_error_retries = max(max_error_retries, error_retries or 0)
 
         user_code_retries = max_user_code_retries
         total_retries = max_user_code_retries + max_error_retries
@@ -562,6 +562,12 @@ class KubeflowPipelines(object):
         inputs, input_args, outputs, output_args = self.get_inputs_and_outputs(node)
         resources = self._get_kubernetes_resources(node)
         env_vars = self._get_environment_variables(node)
+        user_code_retries, total_retries, retry_delay = self._get_retries(node)
+        retry_dict = {
+            "user_code_retries": user_code_retries,
+            "total_retries": total_retries,
+            "retry_delay": retry_delay
+        }
 
         kfp_task_obj = KFPTask(
             name=node.name,
@@ -572,6 +578,7 @@ class KubeflowPipelines(object):
             outputs=outputs,
             env_vars=env_vars,
             k8s_resources=resources,
+            retry_dict=retry_dict,
         )
 
         command_str = self._step_cli(node, kfp_task_obj)
@@ -620,15 +627,7 @@ class KubeflowPipelines(object):
 
         # Get retry configuration
         user_code_retries, total_retries, _ = self._get_retries(node)
-        retry_count = (
-            (
-                "{{retries}}"
-                if not node.parallel_step
-                else "{{inputs.parameters.retryCount}}"
-            )
-            if total_retries
-            else 0
-        )
+        retry_count = "{{retries}}" if total_retries > 0 else 0
 
         # Configure log capture
         mflog_expr = export_mflog_env_vars(

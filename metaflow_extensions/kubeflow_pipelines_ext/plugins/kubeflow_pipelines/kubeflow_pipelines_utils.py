@@ -1,4 +1,5 @@
 import inspect
+from datetime import timedelta
 from kfp import dsl, kubernetes
 from typing import List, Dict, Optional, Any
 
@@ -16,6 +17,7 @@ class KFPTask(object):
         outputs: Optional[Dict[str, type]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         k8s_resources: Optional[Dict[str, Any]] = None,
+        retry_dict: Optional[Dict[str, Any]] = None,
     ):
         self.name = name
         self.image = image
@@ -25,6 +27,7 @@ class KFPTask(object):
         self.outputs = outputs or {}
         self.env_vars = env_vars or {}
         self.k8s_resources = k8s_resources or {}
+        self.retry_dict = retry_dict or {}
 
     def create_task(self, **input_values) -> dsl.PipelineTask:
         parameters = []
@@ -82,6 +85,22 @@ class KFPTask(object):
         runtime_limit = self.k8s_resources.get("runtime_limit")
         if runtime_limit is not None and runtime_limit > 0:
             kubernetes.set_timeout(task, runtime_limit)
+
+        num_retries = self.retry_dict.get("total_retries", 0)
+        retry_delay_seconds = int(
+            self.retry_dict.get(
+                "retry_delay",
+                timedelta(seconds=0)
+            ).total_seconds()
+        )
+
+        if num_retries > 0:
+            task.set_retry(
+                num_retries=num_retries,
+                backoff_duration=f"{retry_delay_seconds}s",
+                backoff_factor=1.0,
+                backoff_max_duration=f"{retry_delay_seconds}s",
+            )
 
         for k, v in self.env_vars.items():
             task.set_env_variable(k, v)
