@@ -97,4 +97,16 @@ python my_flow.py kubeflow-pipelines terminate \
 
 Use `--help` for all available options.
 
+### 5. **delete** - Delete a deployed flow from Kubeflow Pipelines
+
+Delete the flow definition and all its associated versions.
+This undeploys the pipeline but preserves execution history (runs) and artifacts.
+
+```py
+python my_flow.py kubeflow-pipelines delete \
+    --url https://my-kubeflow-instance.com \
+```
+
+Use `--help` for all available options.
+
 ### Fin.
