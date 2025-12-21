@@ -105,7 +105,6 @@ def get_version_id_from_version_name(
 
 
 class KubeflowPipelines(object):
-    TOKEN_STORAGE_ROOT = "mf.kfp"
 
     def __init__(
         self,
@@ -151,39 +150,49 @@ class KubeflowPipelines(object):
         self.parameters = self._process_parameters()
 
     @classmethod
-    def get_existing_deployment(cls, name, flow_datastore):
-        _backend = flow_datastore._storage_impl
-        token_exists = _backend.is_file([cls.get_token_path(name)])
-        if not token_exists[0]:
-            return None
-        with _backend.load_bytes([cls.get_token_path(name)]) as get_results:
-            for _, path, _ in get_results:
-                if path is not None:
-                    with open(path, "r") as f:
-                        data = json.loads(f.read())
-                    return (data["owner"], data["production_token"])
+    def extract_token_from_kfp_spec(cls, name, pipeline_spec):
+        try:
+            k8s_spec = pipeline_spec['platform_spec']['platforms']['kubernetes']
+            executors = k8s_spec['deploymentSpec']['executors']
+            first_executor = next(iter(executors.values()))
+            annotations = first_executor['podMetadata']['annotations']
+            owner = annotations['metaflow/owner']
+            token = annotations['metaflow/production_token']
+            return (owner, token)
+        except (StopIteration, KeyError, TypeError, AttributeError):
+            raise KubeflowPipelineException(
+                "An existing non-metaflow workflow with the same name as "
+                "*%s* already exists in Kubeflow Pipelines. \nPlease modify the "
+                "name of this flow or delete your existing workflow on Kubeflow "
+                "Pipelines before proceeding." % name
+            )
 
     @classmethod
-    def get_token_path(cls, name):
-        return os.path.join(cls.TOKEN_STORAGE_ROOT, name)
+    def get_existing_deployment(cls, kfp_client, name):
+        with suppress_kfp_output():
+            try:
+                pipeline_id = kfp_client.get_pipeline_id(name)
+            except Exception:
+                pipeline_id = None
 
-    @classmethod
-    def save_deployment_token(cls, owner, name, token, flow_datastore):
-        _backend = flow_datastore._storage_impl
-        _backend.save_bytes(
-            [
-                (
-                    cls.get_token_path(name),
-                    BytesIO(
-                        bytes(
-                            json.dumps({"production_token": token, "owner": owner}),
-                            "utf-8",
-                        )
-                    ),
+            if pipeline_id is not None:
+                # fetch the latest version
+                version_id, _ = get_version_id_from_version_name(
+                    kfp_client,
+                    name,
+                    pipeline_id,
+                    version_name=None,
                 )
-            ],
-            overwrite=False,
-        )
+
+                pipeline_version_obj = kfp_client.get_pipeline_version(
+                    pipeline_id,
+                    version_id,
+                )
+
+                pipeline_spec = pipeline_version_obj.pipeline_spec
+                return cls.extract_token_from_kfp_spec(name, pipeline_spec)
+
+            return None
 
     def _process_parameters(self):
         parameters = {}

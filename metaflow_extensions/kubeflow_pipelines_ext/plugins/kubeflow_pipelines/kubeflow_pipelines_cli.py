@@ -29,10 +29,17 @@ VALID_NAME = re.compile(r"[^a-zA-Z0-9_\-\.]")
 
 
 def resolve_token(
-    name, token_prefix, obj, authorize, given_token, generate_new_token, is_project
+    kfp_client,
+    name,
+    token_prefix,
+    obj,
+    authorize,
+    given_token,
+    generate_new_token,
+    is_project
 ):
     # 1) retrieve the previous deployment, if one exists
-    workflow = KubeflowPipelines.get_existing_deployment(name, obj.flow_datastore)
+    workflow = KubeflowPipelines.get_existing_deployment(kfp_client, name)
     if workflow is None:
         obj.echo(
             "It seems this is the first time you are deploying *%s* to "
@@ -101,9 +108,6 @@ def resolve_token(
                 )
         obj.echo("")
         obj.echo("A new production token generated.")
-        KubeflowPipelines.save_deployment_token(
-            get_username(), name, token, obj.flow_datastore
-        )
     else:
         token = prev_token
 
@@ -263,6 +267,7 @@ def create(
 
     obj.echo("Compiling *%s* to Kubeflow Pipelines..." % obj.pipeline_name, bold=True)
     token = resolve_token(
+        kfp_client,
         obj.pipeline_name,
         obj.token_prefix,
         obj,
