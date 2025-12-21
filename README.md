@@ -45,17 +45,23 @@ After this, you can specify the service URL as `http://localhost:8081` in one of
 
 Compile a new version of your flow to Kubeflow Pipelines:
 
+**Recurring Runs**: If your flow is decorated with `@schedule`, this command will automatically create or update the corresponding Recurring Run in Kubeflow Pipelines.
+
 ```py
 python my_flow.py kubeflow-pipelines create \
     --url https://my-kubeflow-instance.com \
-    --version-name v1.0.0
+    --version-name v1.0.0 \
+    --experiment "My Production Experiment" \
+    --alpha 0.5
 ```
 
+Options:
+- `--experiment`: The experiment name to create the recurring run under (if @schedule is present). Defaults to "Default".
+- `--version-name`: Allows one to deploy a custom version name. Else, a new version with UTC timestamp is created.
+- `--yaml-only`: Export the YAML file without uploading to Kubeflow Pipelines.
+- Flow Parameters: Any flow parameters (e.g., `--alpha`) passed here will be baked into the recurring run configuration (if @schedule is present), overriding the defaults defined in your code.
+
 Use `--help` for all available options including `tags`, `namespace`, `max-workers`, and production token management.
-
-The `--version-name` allows one to deploy a custom version name. Else, a new version with UTC timestamp is created on each subsequent usage.
-
-One can also pass `--yaml-only` for exporting the YAML file without uploading to Kubeflow Pipelines.
 
 ### 2. **trigger** - Execute Pipeline
 
@@ -100,7 +106,10 @@ Use `--help` for all available options.
 ### 5. **delete** - Delete a Deployed Pipeline
 
 Delete the flow definition and all its associated versions from Kubeflow Pipelines.
-This undeploys the pipeline but preserves execution history (runs) and artifacts.
+
+This command also searches for and deletes any associated Recurring Runs (Schedules) to ensure no orphaned schedules continue trying to trigger deleted pipelines.
+
+In essence, this undeploys the pipeline but preserves execution history (runs) and artifacts.
 
 ```py
 python my_flow.py kubeflow-pipelines delete \

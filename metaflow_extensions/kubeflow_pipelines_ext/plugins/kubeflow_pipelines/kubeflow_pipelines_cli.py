@@ -189,6 +189,7 @@ def kubeflow_pipelines(obj, name=None):
     obj.pipeline_name, obj.token_prefix, obj.is_project = resolve_pipeline_name(name)
 
 
+@parameters.add_custom_parameters(deploy_mode=True)
 @kubeflow_pipelines.command(help="Compile a new version of this flow to Kubeflow Pipeline.")
 @click.option(
     "--authorize",
@@ -239,6 +240,11 @@ def kubeflow_pipelines(obj, name=None):
     help="The version name of the pipeline to upload.",
 )
 @click.option(
+    "--experiment",
+    default=None,
+    help="The experiment name to create the schedule under (if @schedule is present).",
+)
+@click.option(
     "--yaml-only",
     is_flag=True,
     default=False,
@@ -260,8 +266,10 @@ def create(
     user_namespace=None,
     url=None,
     version_name=None,
+    experiment=None,
     yaml_only=False,
     max_workers=None,
+    **kwargs,
 ):
     if not yaml_only and not url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
@@ -291,6 +299,18 @@ def create(
         kfp_client,
     )
 
+    params = {}
+    for _, param in obj.flow._get_parameters():
+        k = param.name.replace("-", "_").lower()
+        val = kwargs.get(k)
+        if val is not None:
+            if param.kwargs.get("type") == parameters.JSONType:
+                if not isinstance(val, str):
+                    val = json.dumps(val)
+            elif isinstance(val, parameters.DelayedEvaluationParameter):
+                val = val(return_str=True)
+            params[param.name] = val
+
     if yaml_only:
         pipeline_path = f"{obj.pipeline_name}.yaml"
         flow.compile(pipeline_path)
@@ -317,7 +337,25 @@ def create(
             ),
             bold=True,
         )
+
+        recurring_run_result = flow.schedule(
+            parameters=params,
+            experiment_name=experiment,
+            version_name=result['version_name'],
+        )
+
         obj.echo("View at *{pipeline_url}*".format(pipeline_url=pipeline_url), bold=True)
+
+        if recurring_run_result:
+            obj.echo(
+                "\nRecurring run created successfully.\n"
+                "Recurring Run ID: *{id}*\n"
+                "Name: *{name}*".format(
+                    id=recurring_run_result['recurring_run_id'],
+                    name=recurring_run_result['recurring_run_name']
+                ),
+                bold=True
+            )
 
 
 @parameters.add_custom_parameters(deploy_mode=False)

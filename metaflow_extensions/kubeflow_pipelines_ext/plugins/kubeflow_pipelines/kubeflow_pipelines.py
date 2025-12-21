@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import shlex
-from io import BytesIO
 from typing import List
 from typing import Optional
 from datetime import timedelta, datetime, timezone
@@ -71,6 +70,38 @@ def get_all_pipeline_versions(kfp_client, pipeline_name, pipeline_id):
             break
 
     return pipeline_versions
+
+
+def get_all_recurring_runs(kfp_client, job_name, experiment_id=None):
+    recurring_runs = []
+    next_page_token = ""
+    while True:
+        try:
+            recurring_run_response = kfp_client.list_recurring_runs(
+                experiment_id=experiment_id,
+                page_size=100,
+                page_token=next_page_token,
+                filter=json.dumps({
+                    "predicates": [{
+                        "operation": "EQUALS",
+                        "key": "display_name",
+                        "stringValue": job_name
+                    }]
+                })
+            )
+        except Exception as e:
+            raise KubeflowPipelineException(
+                f"Failed to fetch recurring runs for job *{job_name}*: {e}"
+            )
+
+        if recurring_run_response.recurring_runs:
+            recurring_runs.extend(recurring_run_response.recurring_runs)
+
+        next_page_token = recurring_run_response.next_page_token
+        if not next_page_token:
+            break
+
+    return recurring_runs
 
 
 def get_version_id_from_version_name(
@@ -208,7 +239,6 @@ class KubeflowPipelines(object):
 
     def _process_parameters(self):
         parameters = {}
-        has_schedule = self.flow._flow_decorators.get("schedule") is not None
 
         seen = set()
         for var, param in self.flow._get_parameters():
@@ -226,15 +256,6 @@ class KubeflowPipelines(object):
             py_type = param.kwargs.get("type", str)
             is_required = param.kwargs.get("required", False)
 
-            # Throw an exception if a schedule is set for a flow with required
-            # parameters with no defaults. We currently don't have any notion
-            # of data triggers in Argo Workflows.
-            if "default" not in param.kwargs and is_required and has_schedule:
-                raise MetaflowException(
-                    "The parameter *%s* does not have a default and is required. "
-                    "Scheduling such parameters via Argo CronWorkflows is not "
-                    "currently supported." % param.name
-                )
             default_value = deploy_time_eval(param.kwargs.get("default"))
 
             if py_type == JSONType:
@@ -275,6 +296,56 @@ class KubeflowPipelines(object):
 
         return user_code_retries, total_retries, retry_delay
 
+    def _get_schedule(self):
+        """
+        Metaflow's ScheduleDecorator provides AWS style CRON: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html#eb-cron-expressions
+        KFP's CRON: https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format
+
+        Mappings:
+        1. AWS: [Min, Hour, Day, Mon, Week, Year(opt)]
+        2. KFP: [Sec, Min, Hour, Day, Mon, Week]
+
+        Translation:
+        - Prepend '0' for Seconds.
+        - Drop Year if present.
+        - Convert 1-7 to 0-6 for day of week.
+        """
+
+        def translate_dow(val):
+            if "," in val:
+                return ",".join(translate_dow(x) for x in val.split(","))
+            if "-" in val:
+                start, end = val.split("-")
+                return f"{translate_dow(start)}-{translate_dow(end)}"
+            if val.isdigit():
+                # AWS 1=SUN -> KFP 0=SUN
+                return str(int(val) - 1)
+            return val
+
+        schedule = self.flow._flow_decorators.get("schedule")
+        if schedule:
+            schedule = schedule[0]
+
+            if schedule.timezone is not None:
+                raise KubeflowPipelineException(
+                    "Kubeflow Pipelines does not support scheduling with a timezone."
+                )
+
+            parts = schedule.schedule.split()
+
+            # drop year if present
+            if len(parts) == 6:
+                parts = parts[:5]
+
+            # translate day of week
+            parts[4] = translate_dow(parts[4])
+
+            # prepend 0 for seconds
+            kfp_parts = ["0"] + parts
+            return " ".join(kfp_parts)
+
+        return None
+
     def _get_environment_variables(self, node):
         env_deco = [deco for deco in node.decorators if deco.name == "environment"]
         env = {}
@@ -286,7 +357,7 @@ class KubeflowPipelines(object):
         env["METAFLOW_OWNER"] = self.username
 
         env["KFP_PIPELINE_NAME"] = self.name
-        env["KFP_RUN_NAME"] = "{{workflow.annotations.pipelines.kubeflow.org/run_name}}"
+        env["KFP_RUN_NAME"] = "{{workflow.name}}"
         env["KFP_RUN_ID"] = "{{workflow.labels.pipeline/runid}}"
 
         metadata_env = self.metadata.get_runtime_environment("kubeflow-pipelines")
@@ -835,6 +906,71 @@ class KubeflowPipelines(object):
             "version_name": version_name
         }
 
+    def schedule(
+        self,
+        parameters=None,
+        experiment_name=None,
+        version_name=None
+    ):
+        with suppress_kfp_output():
+            cron_expr = self._get_schedule()
+
+            if experiment_name is None:
+                experiment_name = "Default"
+
+            try:
+                experiment = self.kfp_client.get_experiment(experiment_name=experiment_name)
+            except Exception:
+                experiment = self.kfp_client.create_experiment(name=experiment_name)
+
+            job_name = f"{self.name} (schedule)"
+            all_recurring_runs = get_all_recurring_runs(
+                self.kfp_client,
+                job_name,
+                experiment_id=None,
+            )
+
+            for each_rr in all_recurring_runs:
+                self.kfp_client.delete_recurring_run(each_rr.recurring_run_id)
+
+            if cron_expr is None:
+                return None
+
+            try:
+                pipeline_id = self.kfp_client.get_pipeline_id(self.name)
+            except Exception:
+                pipeline_id = None
+
+            if pipeline_id is None:
+                raise KubeflowPipelineException(
+                    f"Pipeline *{self.name}* not found on Kubeflow Pipelines."
+                )
+
+            version_id, version_name = get_version_id_from_version_name(
+                self.kfp_client,
+                self.name,
+                pipeline_id,
+                version_name,
+            )
+
+            rr_obj = self.kfp_client.create_recurring_run(
+                experiment_id=experiment.experiment_id,
+                job_name=job_name,
+                cron_expression=cron_expr,
+                params=parameters,
+                pipeline_id=pipeline_id,
+                version_id=version_id,
+                no_catchup=True,
+                enable_caching=False,
+            )
+
+        return {
+            "recurring_run_id": rr_obj.recurring_run_id,
+            "recurring_run_name": rr_obj.display_name,
+            "recurring_run_pipeline_id": rr_obj.pipeline_version_reference.pipeline_id,
+            "recurring_run_pipeline_version_id": rr_obj.pipeline_version_reference.pipeline_version_id,
+        }
+
     @classmethod
     def trigger(
         cls,
@@ -916,6 +1052,13 @@ class KubeflowPipelines(object):
     @classmethod
     def delete(cls, kfp_client, name):
         with suppress_kfp_output():
+            # fetch all recurring runs if any
+            all_recurring_runs = get_all_recurring_runs(kfp_client, f"{name} (schedule)", experiment_id=None)
+
+            # delete all associated recurring runs..
+            for each_rr in all_recurring_runs:
+                kfp_client.delete_recurring_run(each_rr.recurring_run_id)
+
             try:
                 pipeline_id = kfp_client.get_pipeline_id(name)
             except Exception:
@@ -939,7 +1082,7 @@ class KubeflowPipelines(object):
                         pipeline_id,
                         each_version.pipeline_version_id,
                     )
-                except Exception:
+                except Exception as e:
                     raise KubeflowPipelineException(
                         f"Failed to delete pipeline version *{each_version.display_name}*: {e}"
                     )
