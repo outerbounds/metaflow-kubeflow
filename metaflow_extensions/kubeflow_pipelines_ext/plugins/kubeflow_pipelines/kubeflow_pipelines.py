@@ -48,16 +48,7 @@ def suppress_kfp_output():
             yield
 
 
-def get_version_id_from_version_name(
-    kfp_client,
-    pipeline_name,
-    pipeline_id,
-    version_name: Optional[str] = None
-):
-    """
-    Gets the version_id given a version_name
-    If version_name is None, gets the version_id of the latest version
-    """
+def get_all_pipeline_versions(kfp_client, pipeline_name, pipeline_id):
     pipeline_versions = []
     next_page_token = ""
     while True:
@@ -78,6 +69,21 @@ def get_version_id_from_version_name(
         next_page_token = versions_response.next_page_token
         if not next_page_token:
             break
+
+    return pipeline_versions
+
+
+def get_version_id_from_version_name(
+    kfp_client,
+    pipeline_name,
+    pipeline_id,
+    version_name: Optional[str] = None
+):
+    """
+    Gets the version_id given a version_name
+    If version_name is None, gets the version_id of the latest version
+    """
+    pipeline_versions = get_all_pipeline_versions(kfp_client, pipeline_name, pipeline_id)
 
     if not pipeline_versions:
         raise KubeflowPipelineException(
@@ -906,3 +912,42 @@ class KubeflowPipelines(object):
             return True
         except Exception as e:
             raise KubeflowPipelineException(f"Failed to terminate run *{run_id}*: {str(e)}") from e
+
+    @classmethod
+    def delete(cls, kfp_client, name):
+        with suppress_kfp_output():
+            try:
+                pipeline_id = kfp_client.get_pipeline_id(name)
+            except Exception:
+                pipeline_id = None
+
+            if pipeline_id is None:
+                raise KubeflowPipelineException(
+                    f"Pipeline *{name}* not found on Kubeflow Pipelines."
+                )
+
+            pipeline_versions = get_all_pipeline_versions(kfp_client, name, pipeline_id)
+
+            if not pipeline_versions:
+                raise KubeflowPipelineException(
+                    f"No versions found for pipeline *{name}*."
+                )
+
+            for each_version in pipeline_versions:
+                try:
+                    kfp_client.delete_pipeline_version(
+                        pipeline_id,
+                        each_version.pipeline_version_id,
+                    )
+                except Exception:
+                    raise KubeflowPipelineException(
+                        f"Failed to delete pipeline version *{each_version.display_name}*: {e}"
+                    )
+
+            try:
+                kfp_client.delete_pipeline(pipeline_id)
+                return True
+            except Exception as e:
+                raise KubeflowPipelineException(
+                    f"Failed to delete pipeline *{name}*: {e}"
+                )

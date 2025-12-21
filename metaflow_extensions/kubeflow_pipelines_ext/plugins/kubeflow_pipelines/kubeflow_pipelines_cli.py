@@ -75,7 +75,7 @@ def resolve_token(
                 "Please reach out to them to get the token. Once you have it, call "
                 "this command:"
             )
-            obj.echo("    kfp create --authorize MY_TOKEN", fg="green")
+            obj.echo("    kubeflow-pipelines create --authorize MY_TOKEN", fg="green")
             obj.echo(
                 'See "Organizing Results" at docs.metaflow.org for more information '
                 "about production tokens."
@@ -126,7 +126,7 @@ def resolve_token(
         "If you want to authorize other people to deploy new versions of this flow to "
         "Kubeflow Pipelines, they need to call"
     )
-    obj.echo("    kfp create --authorize %s" % token, fg="green")
+    obj.echo("    kubeflow-pipelines create --authorize %s" % token, fg="green")
     obj.echo("when deploying this flow to Kubeflow Pipelines for the first time.")
     obj.echo(
         'See "Organizing Results" at https://docs.metaflow.org/ for more '
@@ -491,6 +491,71 @@ def terminate(obj, url=None, authorize=None, kfp_run_id=None):
         obj.echo("\nRun terminated.")
     else:
         obj.echo("\nRun has already finished.")
+
+
+@kubeflow_pipelines.command(help="Delete the flow from Kubeflow Pipelines.")
+@click.option(
+    "--url",
+    default=KUBEFLOW_PIPELINES_URL,
+    show_default=True,
+    help="The URL of the Kubeflow Pipelines API.",
+)
+@click.option(
+    "--authorize",
+    default=None,
+    type=str,
+    help="Authorize the termination with a production token",
+)
+@click.pass_obj
+def delete(obj, url=None, authorize=None):
+    if not url:
+        raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
+
+    def _token_instructions(flow_name, prev_user):
+        obj.echo(
+            "There is an existing version of *%s* on Kubeflow Pipelines which was "
+            "deployed by the user *%s*." % (flow_name, prev_user)
+        )
+        obj.echo(
+            "To delete this flow, you need to use the same production token that they used."
+        )
+        obj.echo(
+            "Please reach out to them to get the token. Once you have it, call "
+            "this command:"
+        )
+        obj.echo("    kubeflow-pipelines delete --authorize MY_TOKEN", fg="green")
+        obj.echo(
+            'See "Organizing Results" at docs.metaflow.org for more information '
+            "about production tokens."
+        )
+
+    from kfp import Client
+    kfp_client = Client(host=url)
+
+    deployment = KubeflowPipelines.get_existing_deployment(kfp_client, obj.pipeline_name)
+
+    if deployment is None:
+        prev_token = None
+    else:
+        prev_user, prev_token = deployment
+
+    if prev_token is not None:
+        if authorize is None:
+            authorize = load_token(obj.token_prefix)
+        elif authorize.startswith("production:"):
+            authorize = authorize[11:]
+
+        if prev_user != get_username() and authorize != prev_token:
+            _token_instructions(obj.pipeline_name, prev_user)
+            raise IncorrectProductionToken(
+                "Try again with the correct production token."
+            )
+
+    obj.echo("Deleting pipeline *{name}*...".format(name=obj.pipeline_name), bold=True)
+    deleted = KubeflowPipelines.delete(kfp_client, obj.pipeline_name)
+
+    if deleted:
+        obj.echo(f"Pipeline *{obj.pipeline_name}* deleted.")
 
 
 def validate_run_id(
