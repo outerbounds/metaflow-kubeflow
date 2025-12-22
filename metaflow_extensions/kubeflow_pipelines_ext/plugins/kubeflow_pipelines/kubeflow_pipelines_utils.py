@@ -94,12 +94,14 @@ class KFPTask(object):
             ).total_seconds()
         )
 
+        retry_delay_seconds = 1 if retry_delay_seconds == 0 else retry_delay_seconds
+        max_duration = retry_delay_seconds * (num_retries + 5)
         if num_retries > 0:
             task.set_retry(
                 num_retries=num_retries,
                 backoff_duration=f"{retry_delay_seconds}s",
                 backoff_factor=1.0,
-                backoff_max_duration=f"{retry_delay_seconds}s",
+                backoff_max_duration=f"{max_duration}s",
             )
 
         for k, v in self.env_vars.items():
