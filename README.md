@@ -14,8 +14,7 @@ Compile and run Metaflow flows on Kubeflow Pipelines (**argo workflows** backend
 ## Compiling and Deploying a Pipeline
 
 ```py
-python my_flow.py kubeflow-pipelines create \
-    --url https://my-kubeflow-instance.com
+python my_flow.py kubeflow-pipelines --url https://my-kubeflow-instance.com create
 ```
 
 This command will:
@@ -35,7 +34,7 @@ kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8081:80
 
 After this, you can specify the service URL as `http://localhost:8081` in one of these ways:
 
-- On the CLI for `kubeflow-pipelines` commands with the `--url` option
+- On the CLI for `kubeflow-pipelines` with the `--url` option
 - In the Metaflow config, specify `"METAFLOW_KUBEFLOW_PIPELINES_URL": "http://localhost:8081"`
 - Set an environment variable, `METAFLOW_KUBEFLOW_PIPELINES_URL=http://localhost:8081`
 
@@ -48,8 +47,9 @@ Compile a new version of your flow to Kubeflow Pipelines:
 **Recurring Runs**: If your flow is decorated with `@schedule`, this command will automatically create or update the corresponding Recurring Run in Kubeflow Pipelines.
 
 ```py
-python my_flow.py kubeflow-pipelines create \
+python my_flow.py kubeflow-pipelines \
     --url https://my-kubeflow-instance.com \
+    create \
     --version-name v1.0.0 \
     --experiment "My Production Experiment" \
     --alpha 0.5
@@ -68,8 +68,9 @@ Use `--help` for all available options including `tags`, `namespace`, `max-worke
 Trigger an execution of your deployed pipeline:
 
 ```py
-python my_flow.py kubeflow-pipelines trigger \
+python my_flow.py kubeflow-pipelines \
     --url https://my-kubeflow-instance.com \
+    trigger \
     --experiment my-experiment \
     --alpha 0.1 \
     --max-epochs 100
@@ -84,8 +85,9 @@ By default, the latest version of the deployed pipeline is used for the trigger.
 Fetch the status of a running or completed pipeline execution:
 
 ```py
-python my_flow.py kubeflow-pipelines status \
+python my_flow.py kubeflow-pipelines \
     --url https://my-kubeflow-instance.com \
+    status \
     --kfp-run-id abc-123-def-456
 ```
 
@@ -96,8 +98,9 @@ Use `--help` for all available options.
 Terminate a running pipeline execution:
 
 ```py
-python my_flow.py kubeflow-pipelines terminate \
+python my_flow.py kubeflow-pipelines \
     --url https://my-kubeflow-instance.com \
+    terminate \
     --kfp-run-id abc-123-def-456
 ```
 
@@ -112,8 +115,9 @@ This command also searches for and deletes any associated Recurring Runs (Schedu
 In essence, this undeploys the pipeline but preserves execution history (runs) and artifacts.
 
 ```py
-python my_flow.py kubeflow-pipelines delete \
+python my_flow.py kubeflow-pipelines \
     --url https://my-kubeflow-instance.com \
+    delete
 ```
 
 Use `--help` for all available options.
