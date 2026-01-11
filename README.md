@@ -58,7 +58,7 @@ python my_flow.py kubeflow-pipelines create \
 Options:
 - `--experiment`: The experiment name to create the recurring run under (if @schedule is present). Defaults to "Default".
 - `--version-name`: Allows one to deploy a custom version name. Else, a new version with UTC timestamp is created.
-- `--yaml-only`: Export the YAML file without uploading to Kubeflow Pipelines.
+- `--only-yaml`: Print the YAML specification to stdout and exit without uploading to Kubeflow Pipelines.
 - Flow Parameters: Any flow parameters (e.g., `--alpha`) passed here will be baked into the recurring run configuration (if @schedule is present), overriding the defaults defined in your code.
 
 Use `--help` for all available options including `tags`, `namespace`, `max-workers`, and production token management.
