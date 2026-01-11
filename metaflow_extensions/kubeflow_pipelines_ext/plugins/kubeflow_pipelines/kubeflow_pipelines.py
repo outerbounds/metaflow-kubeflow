@@ -305,10 +305,14 @@ class KubeflowPipelines(object):
         1. AWS: [Min, Hour, Day, Mon, Week, Year(opt)]
         2. KFP: [Sec, Min, Hour, Day, Mon, Week]
 
-        Translation:
+        Translation (if needed):
         - Prepend '0' for Seconds.
         - Drop Year if present.
         - Convert 1-7 to 0-6 for day of week.
+
+        Logic:
+        1. If the user provides a manual 'cron' string, we pass it through raw.
+        2. If the user uses helper flags (daily/weekly), Metaflow defaults to AWS syntax, which we must convert.
         """
 
         def translate_dow(val):
@@ -331,16 +335,22 @@ class KubeflowPipelines(object):
                     "Kubeflow Pipelines does not support scheduling with a timezone."
                 )
 
+            # 1. PASS-THROUGH: User specified custom Cron
+            if schedule.attributes["cron"]:
+                return schedule.schedule
+
+            # 2. CONVERSION: User specified Helpers (daily/weekly/etc)
+            # Metaflow internal defaults are AWS style. Convert them.
             parts = schedule.schedule.split()
 
-            # drop year if present
+            # Drop Year if present (AWS 6th field)
             if len(parts) == 6:
                 parts = parts[:5]
 
-            # translate day of week
+            # Translate Day of Week (AWS 1-7 -> KFP 0-6)
             parts[4] = translate_dow(parts[4])
 
-            # prepend 0 for seconds
+            # Prepend 0 for Seconds (AWS starts at Min, KFP starts at Sec)
             kfp_parts = ["0"] + parts
             return " ".join(kfp_parts)
 
