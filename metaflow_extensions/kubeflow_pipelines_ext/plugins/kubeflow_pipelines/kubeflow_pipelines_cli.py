@@ -7,6 +7,7 @@ from hashlib import sha1
 from metaflow._vendor import click
 from metaflow import current, decorators, parameters
 from metaflow.package import MetaflowPackage
+from metaflow.tagging_util import validate_tags
 from metaflow.util import get_username, to_bytes, to_unicode
 from metaflow.metaflow_config import FEAT_ALWAYS_UPLOAD_CODE_PACKAGE, KUBEFLOW_PIPELINES_URL
 from metaflow.exception import MetaflowException, MetaflowInternalError
@@ -183,10 +184,17 @@ def cli():
     help="Kubeflow Pipeline name. The flow name is used instead if this option is not "
     "specified",
 )
+@click.option(
+    "--url",
+    default=KUBEFLOW_PIPELINES_URL,
+    show_default=True,
+    help="The URL of the Kubeflow Pipelines API.",
+)
 @click.pass_obj
-def kubeflow_pipelines(obj, name=None):
+def kubeflow_pipelines(obj, name=None, url=None):
     obj.check(obj.graph, obj.flow, obj.environment, pylint=obj.pylint)
     obj.pipeline_name, obj.token_prefix, obj.is_project = resolve_pipeline_name(name)
+    obj.kfp_url = url
 
 
 @parameters.add_custom_parameters(deploy_mode=True)
@@ -229,12 +237,6 @@ def kubeflow_pipelines(obj, name=None):
     "See run --help for more information.",
 )
 @click.option(
-    "--url",
-    default=KUBEFLOW_PIPELINES_URL,
-    show_default=True,
-    help="The URL of the Kubeflow Pipelines API.",
-)
-@click.option(
     "--version-name",
     default=None,
     help="The version name of the pipeline to upload.",
@@ -256,6 +258,14 @@ def kubeflow_pipelines(obj, name=None):
     show_default=True,
     help="Maximum number of parallel processes.",
 )
+@click.option(
+    "--deployer-attribute-file",
+    default=None,
+    show_default=True,
+    type=str,
+    help="Write the workflow name to the file specified. Used internally for Metaflow's Deployer API.",
+    hidden=True,
+)
 @click.pass_obj
 def create(
     obj,
@@ -264,18 +274,31 @@ def create(
     given_token=None,
     tags=None,
     user_namespace=None,
-    url=None,
     version_name=None,
     experiment=None,
     yaml_only=False,
     max_workers=None,
+    deployer_attribute_file=None,
     **kwargs,
 ):
-    if not yaml_only and not url:
+    if not yaml_only and not obj.kfp_url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     from kfp import Client
-    kfp_client = Client(host=url) if url else None
+    kfp_client = Client(host=obj.kfp_url) if obj.kfp_url else None
+
+    validate_tags(tags)
+
+    if deployer_attribute_file:
+        with open(deployer_attribute_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "name": obj.pipeline_name,
+                    "flow_name": obj.flow.name,
+                    "metadata": obj.metadata.metadata_str(),
+                },
+                f,
+            )
 
     obj.echo("Compiling *%s* to Kubeflow Pipelines..." % obj.pipeline_name, bold=True)
     token = resolve_token(
@@ -322,7 +345,7 @@ def create(
         result = flow.upload(tmp.name, version_name)
 
         pipeline_url = "{base_url}/#/pipelines/details/{pipeline_id}/version/{version_id}".format(
-            base_url=url.rstrip('/'),
+            base_url=obj.kfp_url.rstrip('/'),
             pipeline_id=result['pipeline_id'],
             version_id=result['version_id']
         )
@@ -361,12 +384,6 @@ def create(
 @parameters.add_custom_parameters(deploy_mode=False)
 @kubeflow_pipelines.command(help="Trigger the workflow on Kubeflow Pipelines.")
 @click.option(
-    "--url",
-    default=KUBEFLOW_PIPELINES_URL,
-    show_default=True,
-    help="The URL of the Kubeflow Pipelines API.",
-)
-@click.option(
     "--experiment",
     default=None,
     help="The experiment name to trigger the run under.",
@@ -376,13 +393,35 @@ def create(
     default=None,
     help="The version name of the pipeline to trigger.",
 )
+@click.option(
+    "--run-id-file",
+    default=None,
+    show_default=True,
+    type=str,
+    help="Write the ID of this run to the file specified.",
+)
+@click.option(
+    "--deployer-attribute-file",
+    default=None,
+    show_default=True,
+    type=str,
+    help="Write the metadata and pathspec of this run to the file specified.\nUsed internally for Metaflow's Deployer API.",
+    hidden=True,
+)
 @click.pass_obj
-def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
-    if not url:
+def trigger(
+    obj,
+    experiment=None,
+    version_name=None,
+    run_id_file=None,
+    deployer_attribute_file=None,
+    **kwargs
+):
+    if not obj.kfp_url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     from kfp import Client
-    kfp_client = Client(host=url)
+    kfp_client = Client(host=obj.kfp_url)
 
     params = {}
     for _, param in obj.flow._get_parameters():
@@ -409,8 +448,24 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
         version_name,
     )
 
+    run_id = "kfp-" + result['run_id']
+    if run_id_file:
+        with open(run_id_file, "w") as f:
+            f.write(str(run_id))
+
+    if deployer_attribute_file:
+        with open(deployer_attribute_file, "w") as f:
+            json.dump(
+                {
+                    "name": obj.pipeline_name,
+                    "metadata": obj.metadata.metadata_str(),
+                    "pathspec": "/".join((obj.flow.name, run_id)),
+                },
+                f,
+            )
+
     run_url = "{base_url}/#/runs/details/{run_id}".format(
-        base_url=url.rstrip('/'),
+        base_url=obj.kfp_url.rstrip('/'),
         run_id=result['run_id']
     )
 
@@ -429,12 +484,6 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
 
 @kubeflow_pipelines.command(help="Fetch flow execution status on Kubeflow Pipelines.")
 @click.option(
-    "--url",
-    default=KUBEFLOW_PIPELINES_URL,
-    show_default=True,
-    help="The URL of the Kubeflow Pipelines API.",
-)
-@click.option(
     "--kfp-run-id",
     required=True,
     default=None,
@@ -442,8 +491,8 @@ def trigger(obj, url=None, experiment=None, version_name=None, **kwargs):
     help="Kubeflow Pipeline Run ID.",
 )
 @click.pass_obj
-def status(obj, url=None, kfp_run_id=None):
-    if not url:
+def status(obj, kfp_run_id=None):
+    if not obj.kfp_url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     obj.echo(
@@ -452,7 +501,7 @@ def status(obj, url=None, kfp_run_id=None):
     )
 
     from kfp import Client
-    kfp_client = Client(host=url)
+    kfp_client = Client(host=obj.kfp_url)
     run_status = KubeflowPipelines.get_status(kfp_client, kfp_run_id)
 
     if run_status:
@@ -462,12 +511,6 @@ def status(obj, url=None, kfp_run_id=None):
 
 
 @kubeflow_pipelines.command(help="Terminate flow execution on Kubeflow Pipelines.")
-@click.option(
-    "--url",
-    default=KUBEFLOW_PIPELINES_URL,
-    show_default=True,
-    help="The URL of the Kubeflow Pipelines API.",
-)
 @click.option(
     "--authorize",
     default=None,
@@ -482,8 +525,8 @@ def status(obj, url=None, kfp_run_id=None):
     help="Kubeflow Pipeline Run ID.",
 )
 @click.pass_obj
-def terminate(obj, url=None, authorize=None, kfp_run_id=None):
-    if not url:
+def terminate(obj, authorize=None, kfp_run_id=None):
+    if not obj.kfp_url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     def _token_instructions(flow_name, prev_user):
@@ -512,7 +555,7 @@ def terminate(obj, url=None, authorize=None, kfp_run_id=None):
     )
 
     from kfp import Client
-    kfp_client = Client(host=url)
+    kfp_client = Client(host=obj.kfp_url)
 
     validate_run_id(
         kfp_client,
@@ -533,20 +576,14 @@ def terminate(obj, url=None, authorize=None, kfp_run_id=None):
 
 @kubeflow_pipelines.command(help="Delete the flow from Kubeflow Pipelines.")
 @click.option(
-    "--url",
-    default=KUBEFLOW_PIPELINES_URL,
-    show_default=True,
-    help="The URL of the Kubeflow Pipelines API.",
-)
-@click.option(
     "--authorize",
     default=None,
     type=str,
     help="Authorize the termination with a production token",
 )
 @click.pass_obj
-def delete(obj, url=None, authorize=None):
-    if not url:
+def delete(obj, authorize=None):
+    if not obj.kfp_url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     def _token_instructions(flow_name, prev_user):
@@ -568,7 +605,7 @@ def delete(obj, url=None, authorize=None):
         )
 
     from kfp import Client
-    kfp_client = Client(host=url)
+    kfp_client = Client(host=obj.kfp_url)
 
     deployment = KubeflowPipelines.get_existing_deployment(kfp_client, obj.pipeline_name)
 
