@@ -83,3 +83,6 @@ class KubeflowPipelinesDeployer(DeployerImpl):
         from .kubeflow_pipelines_deployer_objects import KubeflowPipelinesDeployedFlow
 
         return self._create(KubeflowPipelinesDeployedFlow, **kwargs)
+
+
+_addl_stubgen_modules = ["metaflow_extensions.kubeflow_pipelines_ext.plugins.kubeflow_pipelines.kubeflow_pipelines_deployer_objects"]
