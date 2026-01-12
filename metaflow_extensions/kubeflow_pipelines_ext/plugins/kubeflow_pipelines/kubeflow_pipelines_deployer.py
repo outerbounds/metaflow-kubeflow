@@ -64,8 +64,6 @@ class KubeflowPipelinesDeployer(DeployerImpl):
             Annotate all objects produced by Kubeflow Pipeline executions with these tags.
         user_namespace : str, optional, default None
             Change the namespace from the default to the given namespace.
-        url : str, optional, default None
-            The URL of the Kubeflow Pipelines API.
         version_name : str, optional, default None
             The version name of the pipeline to upload.
         experiment : str, optional, default None
