@@ -245,10 +245,10 @@ def kubeflow_pipelines(obj, name=None):
     help="The experiment name to create the schedule under (if @schedule is present).",
 )
 @click.option(
-    "--yaml-only",
+    "--only-yaml",
     is_flag=True,
     default=False,
-    help="Compile the pipeline to a local YAML file and exit without uploading to Kubeflow Pipelines.",
+    help="Compile the pipeline to a YAML string and exit without uploading to Kubeflow Pipelines.",
 )
 @click.option(
     "--max-workers",
@@ -267,11 +267,11 @@ def create(
     url=None,
     version_name=None,
     experiment=None,
-    yaml_only=False,
+    only_yaml=False,
     max_workers=None,
     **kwargs,
 ):
-    if not yaml_only and not url:
+    if not only_yaml and not url:
         raise KubeflowPipelineException("Please supply a Kubeflow Pipelines API Server URL with --url")
 
     from kfp import Client
@@ -311,10 +311,11 @@ def create(
                 val = val(return_str=True)
             params[param.name] = val
 
-    if yaml_only:
-        pipeline_path = f"{obj.pipeline_name}.yaml"
-        flow.compile(pipeline_path)
-        obj.echo("Pipeline YAML saved to: *{pipeline_path}*".format(pipeline_path=pipeline_path), bold=True)
+    if only_yaml:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=True) as tmp:
+            flow.compile(tmp.name)
+            with open(tmp.name, 'r') as f:
+                obj.echo_always(f.read(), err=False, no_bold=True)
         return
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=True) as tmp:
