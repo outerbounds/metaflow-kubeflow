@@ -305,23 +305,15 @@ class KubeflowPipelines(object):
         1. AWS: [Min, Hour, Day, Mon, Week, Year(opt)]
         2. KFP: [Sec, Min, Hour, Day, Mon, Week]
 
-        Translation:
+        Translation from AWS to KFP (if needed):
         - Prepend '0' for Seconds.
         - Drop Year if present.
         - Convert 1-7 to 0-6 for day of week.
+
+        Logic:
+        1. If the user provides a manual 'cron' string, we pass it through raw.
+        2. If the user uses helper flags (daily/weekly), Metaflow defaults to AWS syntax, which we must convert.
         """
-
-        def translate_dow(val):
-            if "," in val:
-                return ",".join(translate_dow(x) for x in val.split(","))
-            if "-" in val:
-                start, end = val.split("-")
-                return f"{translate_dow(start)}-{translate_dow(end)}"
-            if val.isdigit():
-                # AWS 1=SUN -> KFP 0=SUN
-                return str(int(val) - 1)
-            return val
-
         schedule = self.flow._flow_decorators.get("schedule")
         if schedule:
             schedule = schedule[0]
@@ -331,18 +323,16 @@ class KubeflowPipelines(object):
                     "Kubeflow Pipelines does not support scheduling with a timezone."
                 )
 
-            parts = schedule.schedule.split()
-
-            # drop year if present
-            if len(parts) == 6:
-                parts = parts[:5]
-
-            # translate day of week
-            parts[4] = translate_dow(parts[4])
-
-            # prepend 0 for seconds
-            kfp_parts = ["0"] + parts
-            return " ".join(kfp_parts)
+            if schedule.attributes["cron"]:
+                return schedule.schedule
+            elif schedule.attributes["weekly"]:
+                return "0 0 0 ? * SUN"
+            elif schedule.attributes["hourly"]:
+                return "0 0 * * * ?"
+            elif schedule.attributes["daily"]:
+                return "0 0 0 * * ?"
+            else:
+                return None
 
         return None
 
