@@ -63,6 +63,7 @@ class KFPInternalDecorator(StepDecorator):
         if node.name != "end" and not node.parallel_foreach:
             task_id_path = os.environ.get("KFP_OUTPUT_task_id_out")
             if task_id_path:
+                os.makedirs(os.path.dirname(task_id_path), exist_ok=True)
                 with open(task_id_path, "w") as f:
                     f.write(self.task_id)
 
@@ -72,6 +73,7 @@ class KFPInternalDecorator(StepDecorator):
 
             splits_path = os.environ.get("KFP_OUTPUT_splits_out")
             if splits_path:
+                os.makedirs(os.path.dirname(splits_path), exist_ok=True)
                 with open(splits_path, "w") as f:
                     json.dump(splits, f)
 
@@ -82,5 +84,6 @@ class KFPInternalDecorator(StepDecorator):
 
             switch_path = os.environ.get("KFP_OUTPUT_switch_step_out")
             if switch_path:
+                os.makedirs(os.path.dirname(switch_path), exist_ok=True)
                 with open(switch_path, "w") as f:
                     f.write(chosen_step)
